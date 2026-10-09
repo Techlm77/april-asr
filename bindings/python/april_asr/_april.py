@@ -70,6 +70,7 @@ class Model:
     model.
     """
     def __init__(self, path: str):
+        self._handle = None
         self._handle = _c.ffi.aam_create_model(path)
 
         if self._handle is None:
@@ -92,7 +93,8 @@ class Model:
         return _c.ffi.aam_get_sample_rate(self._handle)
 
     def __del__(self):
-        _c.ffi.aam_free(self._handle)
+        if getattr(self, "_handle", None) is not None and _c.ffi is not None:
+            _c.ffi.aam_free(self._handle)
         self._handle = None
 
 
@@ -122,6 +124,10 @@ class Session:
             no_rt: bool = False,
             speaker_name: str = ""
         ):
+        self._handle = None
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        self.callback = callback
         config = _c.AprilConfig()
         config.flags = _c.AprilConfigFlagBits()
 
@@ -143,8 +149,6 @@ class Session:
         self._handle = _c.ffi.aas_create_session(model._handle, config)
         if self._handle is None:
             raise Exception()
-
-        self.callback = callback
 
     def get_rt_speedup(self) -> float:
         """
@@ -173,7 +177,18 @@ class Session:
         """
         _c.ffi.aas_flush(self._handle)
 
+    def wait(self) -> None:
+        """Wait for queued async recognition and callbacks after flush().
+
+        Requires the updated native engine. Do not call from the handler.
+        """
+        if _c.ffi.aas_wait is None:
+            raise RuntimeError("This native April ASR library does not provide aas_wait")
+        if not _c.ffi.aas_wait(self._handle):
+            raise RuntimeError("Cannot wait for this session from its handler")
+
     def __del__(self):
-        _c.ffi.aas_free(self._handle)
+        if getattr(self, "_handle", None) is not None and _c.ffi is not None:
+            _c.ffi.aas_free(self._handle)
         self.model = None
         self._handle = None

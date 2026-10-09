@@ -18,6 +18,8 @@
 #define _APRIL_AUDIO_PROVIDER
 
 #include "common.h"
+#include <stdbool.h>
+#include <stddef.h>
 
 struct AudioProvider_i;
 typedef struct AudioProvider_i *AudioProvider;

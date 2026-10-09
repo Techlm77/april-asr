@@ -18,10 +18,12 @@
 #define _APRIL_PROC_THREAD
 
 #include "common.h"
+#include <stdbool.h>
 
 #define PT_FLAG_KILL 1
 #define PT_FLAG_AUDIO 2
 #define PT_FLAG_FLUSH 4
+#define PT_FLAG_OVERFLOW 8
 
 struct ProcThread_i;
 
@@ -30,6 +32,7 @@ typedef void(*ProcThreadCallback)(void*, int);
 
 ProcThread pt_create(ProcThreadCallback callback, void *userdata);
 void pt_raise(ProcThread thread, int flag);
+bool pt_wait_idle(ProcThread thread);
 void pt_free(ProcThread thread);
 
 #endif

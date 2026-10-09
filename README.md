@@ -4,6 +4,24 @@
 
 [Documentation](https://abb128.github.io/april-asr/concepts.html)
 
+## Streaming and accuracy updates
+
+- Worker wakeups, queued-audio finalization and real-time load measurement are
+  fixed, and state no longer leaks between flushed utterances.
+- Feature extraction uses the model's requested frame geometry; historical
+  geometry remains available via `APRIL_CORRECT_FBANK=0`.
+- Utterances finalize after 1.2 s of inactivity instead of 2.2 s
+  (`APRIL_SILENCE_MS`), and the final flush does less padding work.
+- Model loading checks section bounds and ONNX tensor contracts, returning an
+  error instead of aborting.
+- Encoder threads are configurable with `APRIL_ENCODER_THREADS`;
+  `scripts/tune-cpu.py` helps choose a value.
+
+The public C API and model format are unchanged. On 80 LibriSpeech test-clean
+and test-other clips (1,601 words), word error rate went from 13.4% to 12.6% with
+the same English model. `tests/compare-asr.py` reproduces this comparison
+against labelled WAV files.
+
 ## Status
 This library is currently facing some major rewrites over 2025 to improve efficiency and properly fulfill the API contract of multi-session support. The model format is going to change.
 
@@ -58,7 +76,7 @@ $ ./main /path/to/file.wav /path/to/model.april
 
 For streaming recognition, you can pipe parec into it. The command below will live caption your desktop audio.
 ```
-$ parec --format=s16 --rate=16000 --channels=1 --latency-ms=100 --device=@DEFAULT_MONITOR@ | ./main - /path/to/model.april
+$ parec --format=s16 --rate=16000 --channels=1 --latency-msec=20 --device=@DEFAULT_MONITOR@ | ./main - /path/to/model.april
 ```
 
 ## Models
@@ -69,12 +87,13 @@ The English models are based on [csukuangfj's trained icefall model](https://hug
 To export your own models, check out `extra/exporting-howto.md`
 
 ## Building on Linux
+
 Building requires ONNXRuntime. You can either try to build it from source or just download the release binaries.
 
 ### Downloading ONNXRuntime
 Run `./download_onnx_linux_x64.sh` for linux-x64.
 
-For other platforms the script should be very similar, or visit https://github.com/microsoft/onnxruntime/releases/tag/v1.13.1 and download the right zip/tgz file for your platform and extract the contents to a directory named `lib`.
+For other platforms the script should be very similar, or visit https://github.com/microsoft/onnxruntime/releases/tag/v1.30.0 and download the right zip/tgz file for your platform and extract the contents to a directory named `lib`.
 
 You may also define the env variable `ONNX_ROOT` containing a path to where you extracted the archive, if placing it in `lib` isn't a choice.
 
@@ -98,17 +117,18 @@ $ cmake -DCMAKE_BUILD_TYPE=Release ..
 $ make -j4
 ```
 
-You should now have `main`, `libaprilasr.so` and `libaprilasr_static.so`.
+You should now have `main`, `libaprilasr.so` and `libaprilasr_static.a`.
 
-If running `main` fails because it can't find `libonnxruntime.so.1.13.1`, you may need to make `libonnxruntime.so.1.13.1` accessible like so:
+If running `main` fails because it can't find `libonnxruntime.so.1.30.0`, you may need to make `libonnxruntime.so.1.30.0` accessible like so:
 ```
+$ export ORT_DISABLE_TELEMETRY=1
 $ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`/../lib/lib/
 ```
 
 ## Building on Windows (msvc)
 Create a folder called `lib` in the april-asr folder.
 
-Download [onnxruntime-win-x64-1.13.1.zip](https://github.com/microsoft/onnxruntime/releases/download/v1.13.1/onnxruntime-win-x64-1.13.1.zip) and extract the insides of the onnxruntime-win-x64-1.13.1 folder to the `lib` folder
+Download [onnxruntime-win-x64-1.30.0.zip](https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/onnxruntime-win-x64-1.30.0.zip) and extract the insides of the onnxruntime-win-x64-1.30.0 folder to the `lib` folder
 
 Run cmake to configure and generate Visual Studio project files. Make sure you select x64 as the target if you have downloaded the x64 version of ONNXRuntime.
 

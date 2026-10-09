@@ -182,8 +182,18 @@ APRIL_EXPORT AprilASRSession aas_create_session(AprilASRModel model, AprilConfig
    Note `short_count` is the number of shorts, not bytes! */
 APRIL_EXPORT void aas_feed_pcm16(AprilASRSession session, short *pcm16, size_t short_count);
 
-/* Processes any unprocessed samples and produces a final result. */
+/* Processes pending samples and produces a final result. Async mode enqueues
+   this work; call aas_wait before reading final output or feeding a new utterance.
+   An empty flush does nothing. After completion, recurrence and audio context are
+   reset for the next utterance; timestamps continue from accepted source audio,
+   excluding the synthetic right-context padding used during flush. */
 APRIL_EXPORT void aas_flush(AprilASRSession session);
+
+/* Wait for queued asynchronous work and callbacks to finish. Returns 1 on
+   success, or 0 if called from the session's callback (which would deadlock).
+   Call after aas_flush before reading final output or feeding a new utterance.
+   Feed/flush/wait/free must have one owner; do not call wait/free in callbacks. */
+APRIL_EXPORT int aas_wait(AprilASRSession session);
 
 /* If APRIL_CONFIG_FLAG_ASYNC_RT_BIT is set, this may return a number describing
    how much audio is being sped up to keep up with realtime. If the number is
@@ -191,8 +201,9 @@ APRIL_EXPORT void aas_flush(AprilASRSession session);
    being sped up and the accuracy may be reduced. */
 APRIL_EXPORT float aas_realtime_get_speedup(AprilASRSession session);
 
-/* Frees the session, this must be called for all sessions before freeing
-   the model. Saves state to a file if AprilSpeakerID was supplied. */
+/* Drain queued async work and free the session. Call for every session before
+   freeing the model. Do not call from its result callback or concurrently with
+   feed/flush. AprilSpeakerID state persistence is not implemented. */
 APRIL_EXPORT void aas_free(AprilASRSession session);
 
 #ifdef __cplusplus

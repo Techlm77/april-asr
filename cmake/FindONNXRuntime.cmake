@@ -40,8 +40,10 @@ set(ONNXRuntime_ROOT_DIR
     "${ONNXRuntime_ROOT_DIR}"
     CACHE PATH "Root to search for ONNXRuntime")
 
-find_package(PkgConfig)
-pkg_check_modules(PC_ONNXRuntime QUIET libonnxruntime)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(PC_ONNXRuntime QUIET libonnxruntime)
+endif()
 
 find_library(
     ONNXRuntime_LIBRARY
@@ -50,7 +52,7 @@ find_library(
     PATH_SUFFIXES lib
     HINTS ${PC_ONNXRuntime_LIBRARY_DIRS})
 find_path(
-    ONNXRuntime_INCLUDE_DIR onnxruntime_cxx_api.h
+    ONNXRuntime_INCLUDE_DIR onnxruntime_c_api.h
     PATHS ${ONNXRuntime_ROOT_DIR}
     PATH_SUFFIXES onnxruntime include include/onnxruntime onnxruntime/core/session
                   include/onnxruntime/core/session
