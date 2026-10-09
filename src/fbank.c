@@ -357,7 +357,7 @@ static void accept_waveform(OnlineFBank fbank, const float *wave, size_t wave_co
 
         if (end_idx < 0 || (size_t)end_idx > wave_count) {
             if(start_idx >= 0){
-                assert((wave_count - start_idx) < (fbank->padded_window_size * 2));
+                assert((wave_count - start_idx) < ((size_t)fbank->padded_window_size * 2));
                 memcpy(fbank->prev_leftover, &samples[start_idx], (wave_count - start_idx) * sizeof(float));
             }else{
                 // This branch may be hit when wave_count < fbank->padded_window_size
@@ -366,8 +366,8 @@ static void accept_waveform(OnlineFBank fbank, const float *wave, size_t wave_co
 
                 size_t num_to_move_from_prev = -start_idx;
 
-                assert((wave_count + num_to_move_from_prev) <= (fbank->padded_window_size * 2));
-                assert((fbank->prev_leftover_count + start_idx + num_to_move_from_prev) <= (fbank->padded_window_size * 2));
+                assert((wave_count + num_to_move_from_prev) <= ((size_t)fbank->padded_window_size * 2));
+                assert((fbank->prev_leftover_count + start_idx + num_to_move_from_prev) <= ((size_t)fbank->padded_window_size * 2));
 
                 memmove(
                     fbank->prev_leftover,
