@@ -57,6 +57,18 @@ namespace AprilAsr
             if(!Environment.HasShutdownStarted) Release();
         }
 
+        private IntPtr Handle
+        {
+            get
+            {
+                lock(sync)
+                {
+                    if(released || handle == IntPtr.Zero) throw new ObjectDisposedException(nameof(AprilModel));
+                    return handle;
+                }
+            }
+        }
+
         internal void AddSession()
         {
             lock(sync)
@@ -96,25 +108,25 @@ namespace AprilAsr
         /// <value>The name of the model as stored in the file metadata</value>
         public string Name
         {
-            get { return AprilAsrPINVOKE.PtrToStringUTF8(AprilAsrPINVOKE.aam_get_name(handle)) ?? ""; }
+            get { return AprilAsrPINVOKE.PtrToStringUTF8(AprilAsrPINVOKE.aam_get_name(Handle)) ?? ""; }
         }
 
         /// <value>The description of the model as stored in the file metadata</value>
         public string Description
         {
-            get { return AprilAsrPINVOKE.PtrToStringUTF8(AprilAsrPINVOKE.aam_get_description(handle)) ?? ""; }
+            get { return AprilAsrPINVOKE.PtrToStringUTF8(AprilAsrPINVOKE.aam_get_description(Handle)) ?? ""; }
         }
 
         /// <value>The language of the model as stored in the file metadata</value>
         public string Language
         {
-            get { return AprilAsrPINVOKE.PtrToStringUTF8(AprilAsrPINVOKE.aam_get_language(handle)) ?? ""; }
+            get { return AprilAsrPINVOKE.PtrToStringUTF8(AprilAsrPINVOKE.aam_get_language(Handle)) ?? ""; }
         }
 
         /// <value>The sample rate of the model as stored in the file metadata</value>
         public int SampleRate
         {
-            get { return AprilAsrPINVOKE.aam_get_sample_rate(handle); }
+            get { return AprilAsrPINVOKE.aam_get_sample_rate(Handle); }
         }
     }
 }

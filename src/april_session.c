@@ -120,7 +120,7 @@ float aas_realtime_get_speedup(AprilASRSession session) {
     mtx_lock(&session->status_mutex);
     float result = (float)session->speed_needed;
     mtx_unlock(&session->status_mutex);
-    return result > 1.0f ? result : 1.0f;
+    return result;
 }
 
 void aas_free(AprilASRSession session) {
@@ -620,7 +620,10 @@ void _aas_flush(AprilASRSession session) {
 
     /* Flushing ends this utterance. Recurrence, feature overlap and Sonic's
        pending audio must not carry into the next one. Keep the FFT/mel tables. */
+    double speed = fbank_get_speed(session->fbank);
     fbank_reset(session->fbank);
+    /* The realtime speedup reflects the machine, not the utterance. */
+    if (session->force_realtime) fbank_set_speed(session->fbank, speed);
     for (int i = 0; i < 2; ++i) {
         memset(session->h[i].data, 0, sizeof(float) * SHAPE_PRODUCT3(session->model->h_dim));
         memset(session->c[i].data, 0, sizeof(float) * SHAPE_PRODUCT3(session->model->c_dim));
@@ -630,7 +633,6 @@ void _aas_flush(AprilASRSession session) {
     session->last_handler_call_head = 0;
     session->current_time_ms = (size_t)(session->source_samples * 1000 / session->model->params.sample_rate);
     session->last_emission_time_ms = session->current_time_ms;
-    session->time_since_update_speed = 0;
 }
 
 

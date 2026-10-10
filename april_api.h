@@ -198,8 +198,8 @@ APRIL_EXPORT void aas_flush(AprilASRSession session);
 
 /* Wait for queued asynchronous work and callbacks to finish, including the
    final results of every queued flush. Returns 1 on success, or 0 if called
-   from the session's callback (which would deadlock). Returns immediately
-   for synchronous sessions. Feed/flush/wait/free must have one owner; do not
+   from an asynchronous session's callback (which would deadlock). Returns 1
+   immediately for synchronous sessions. Feed/flush/wait/free must have one owner; do not
    call wait/free in callbacks. */
 APRIL_EXPORT int aas_wait(AprilASRSession session);
 

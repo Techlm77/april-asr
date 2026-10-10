@@ -63,7 +63,11 @@ namespace AprilAsr
                 lock(live) remaining = new List<WeakReference<AprilSession>>(live);
                 foreach(var reference in remaining)
                 {
-                    if(reference.TryGetTarget(out var session)) session.Free();
+                    try
+                    {
+                        if(reference.TryGetTarget(out var session)) session.Free();
+                    }
+                    catch(InvalidOperationException) { }
                 }
             };
         }
@@ -153,8 +157,24 @@ namespace AprilAsr
             if(!Environment.HasShutdownStarted) Free();
         }
 
+        private IntPtr Handle
+        {
+            get
+            {
+                IntPtr session = handle;
+                if(session == IntPtr.Zero) throw new ObjectDisposedException(nameof(AprilSession));
+                return session;
+            }
+        }
+
         private void Free()
         {
+            IntPtr current = handle;
+            if(current == IntPtr.Zero) return;
+            // aas_free refuses on the session's own worker thread; detect that
+            // here so the model is not released while the session still runs.
+            if(AprilAsrPINVOKE.aas_wait(current) == 0)
+                throw new InvalidOperationException("Cannot dispose a session from its own callback");
             IntPtr session = Interlocked.Exchange(ref handle, IntPtr.Zero);
             if(session == IntPtr.Zero) return;
             AprilAsrPINVOKE.aas_free(session);
@@ -170,7 +190,7 @@ namespace AprilAsr
         /// </summary>
         public void FeedPCM16(short[] samples, int num_samples)
         {
-            AprilAsrPINVOKE.aas_feed_pcm16(handle, samples, num_samples);
+            AprilAsrPINVOKE.aas_feed_pcm16(Handle, samples, num_samples);
         }
 
         /// <summary>
@@ -183,7 +203,7 @@ namespace AprilAsr
         /// </summary>
         public float GetRTSpeedup()
         {
-            return AprilAsrPINVOKE.aas_realtime_get_speedup(handle);
+            return AprilAsrPINVOKE.aas_realtime_get_speedup(Handle);
         }
 
         /// <summary>
@@ -195,7 +215,7 @@ namespace AprilAsr
         /// </summary>
         public ulong GetBacklogMs()
         {
-            return AprilAsrPINVOKE.aas_get_backlog_ms(handle).ToUInt64();
+            return AprilAsrPINVOKE.aas_get_backlog_ms(Handle).ToUInt64();
         }
 
         /// <summary>
@@ -207,7 +227,7 @@ namespace AprilAsr
         /// </summary>
         public void Flush()
         {
-            AprilAsrPINVOKE.aas_flush(handle);
+            AprilAsrPINVOKE.aas_flush(Handle);
         }
 
         /// <summary>
@@ -219,7 +239,7 @@ namespace AprilAsr
         /// session's callback, which would deadlock.</exception>
         public void Wait()
         {
-            if(AprilAsrPINVOKE.aas_wait(handle) == 0)
+            if(AprilAsrPINVOKE.aas_wait(Handle) == 0)
             {
                 throw new InvalidOperationException("Cannot wait for a session from its own callback");
             }

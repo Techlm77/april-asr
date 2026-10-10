@@ -14,14 +14,18 @@
   (`APRIL_SILENCE_MS`), and the final flush does less padding work.
 - Model loading checks section bounds and ONNX tensor contracts, returning an
   error instead of aborting.
-- The encoder uses 2 threads by default (1 on single-core machines), which
-  gives most of the available speedup; override with `APRIL_ENCODER_THREADS`;
+- The encoder uses 2 threads by default (1 when the process may only use one
+  CPU), which gives most of the available speedup; override with
+  `APRIL_ENCODER_THREADS`;
   `scripts/tune-cpu.py` helps choose a value.
 
 ### API changes
 
-The model format is unchanged, but the C API has additions and one changed
-contract:
+The model format is unchanged, but the loader now validates it: a model whose
+sections overlap or run past the end of the file, whose token list is malformed,
+or whose ONNX networks do not have the expected input and output names, types
+and shapes (see `src/april_model.c`) is rejected with an error instead of
+crashing. The C API has additions and changed contracts:
 
 - `aas_flush` in an asynchronous session is now ordered with the audio queue.
   Audio fed before the call belongs to the flushed utterance and audio fed
@@ -31,13 +35,15 @@ contract:
 - New `aas_wait(session)` blocks until queued asynchronous work and callbacks,
   including the final result of every queued flush, have finished. Call it
   when you need the final result before continuing, such as before reading
-  results or tearing down. It returns 0 if called from the session's callback.
+  results or tearing down. In an asynchronous session it returns 0 if called
+  from the session's callback.
 - New `aas_get_backlog_ms(session)` reports how much fed audio an asynchronous
   session has not processed yet. Use it to detect falling behind in
   `APRIL_CONFIG_FLAG_ASYNC_NO_RT_BIT` mode, where `aas_realtime_get_speedup`
   always returns 1.0.
-- `APRIL_RESULT_ERROR_CANT_KEEP_UP` is now reported while overloaded input
-  continues, not only once input stops.
+- `APRIL_RESULT_ERROR_CANT_KEEP_UP` is now delivered from the background
+  thread, at most once per processing batch while input continues, instead of
+  synchronously from `aas_feed_pcm16` for every chunk that is dropped.
 
 The Python (`Session.wait`, `Session.get_backlog_ms`), Java
 (`Session.waitIdle`, `Session.getBacklogMs`) and C# (`AprilSession.Wait`,
@@ -157,7 +163,7 @@ $ make -j4
 
 You should now have `main`, `libaprilasr.so` and `libaprilasr_static.a`.
 
-If running `main` fails because it can't find `libonnxruntime.so.1.30.0`, you may need to make `libonnxruntime.so.1.30.0` accessible like so:
+If running `main` fails because it can't find `libonnxruntime.so.1`, you may need to make the ONNX Runtime library accessible like so:
 ```
 $ export ORT_DISABLE_TELEMETRY=1
 $ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`/../lib/lib/

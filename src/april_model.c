@@ -14,6 +14,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE /* sched_getaffinity */
+#endif
 #include "common.h"
 #include "file/model_file.h"
 #include "april_model.h"
@@ -25,13 +28,28 @@
 #else
 #include <unistd.h>
 #endif
+#ifdef __linux__
+#include <sched.h>
+#endif
 
+/* CPUs this process may run on, honouring affinity (taskset, cpusets). */
 static long online_cpu_count(void) {
 #ifdef _WIN32
+    DWORD_PTR process_mask, system_mask;
+    if (GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask)) {
+        long count = 0;
+        for (; process_mask; process_mask &= process_mask - 1) count++;
+        if (count > 0) return count;
+    }
     SYSTEM_INFO info;
     GetSystemInfo(&info);
     return (long)info.dwNumberOfProcessors;
 #else
+#ifdef __linux__
+    cpu_set_t set;
+    if (sched_getaffinity(0, sizeof(set), &set) == 0 && CPU_COUNT(&set) > 0)
+        return CPU_COUNT(&set);
+#endif
     return sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 }
