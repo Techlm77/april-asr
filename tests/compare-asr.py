@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Compare an April shared library against labelled WAVs with the same chunks.
 Run each configuration in its own process: ORT models are immutable after load.
+The output records SHA-256 hashes of the library, model, reference list and
+every clip, and the exact settings, so that a result can be reproduced.
 """
 import argparse
 import ctypes as c
+import hashlib
 import json
 import os
 import re
@@ -27,6 +30,13 @@ os.environ['APRIL_PUNCTUATION_BIAS'] = '0' if a.profile == 'strict' else '3.5'
 os.environ['APRIL_MAX_SYMBOLS'] = '6' if a.profile == 'strict' else '3'
 os.environ['APRIL_SPECULATIVE'] = '0' if a.profile == 'strict' else '1'
 os.environ['APRIL_SILENCE_MS'] = '2200' if a.profile in ['baseline', 'legacy'] else '1200'
+SETTINGS = ['APRIL_ENCODER_THREADS', 'APRIL_CORRECT_FBANK', 'APRIL_EARLY_EMIT', 'APRIL_PUNCTUATION_BIAS',
+            'APRIL_MAX_SYMBOLS', 'APRIL_SPECULATIVE', 'APRIL_SILENCE_MS']
+def sha256(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''): digest.update(block)
+    return digest.hexdigest()
 class Token(c.Structure):
     _fields_ = [('token', c.c_char_p), ('logprob', c.c_float), ('flags', c.c_int), ('time_ms', c.c_size_t), ('reserved', c.c_void_p)]
 Callback = c.CFUNCTYPE(None, c.c_void_p, c.c_int, c.c_size_t, c.POINTER(Token))
@@ -84,7 +94,7 @@ for i, row in enumerate(rows):
     text = ''.join(finals)
     reference = words(row['text']); prediction = words(text)
     calls.sort()
-    entry = {'audio': row['audio'], 'reference': row['text'], 'transcript': text,
+    entry = {'audio': row['audio'], 'audio_sha256': sha256(audio), 'reference': row['text'], 'transcript': text,
              'word_errors': distance(reference, prediction), 'words': len(reference),
              'audio_seconds': len(samples)/rate, 'wall_seconds': elapsed,
              'feed_p95_ms': calls[int(.95*(len(calls)-1))],
@@ -96,7 +106,12 @@ library.aam_free(model)
 errors = sum(row['word_errors'] for row in output)
 num_words = sum(row['words'] for row in output)
 seconds = sum(row['audio_seconds'] for row in output)
-summary = {'profile': a.profile, 'threads': a.threads, 'clips': len(output), 'words': num_words,
+summary = {'profile': a.profile, 'threads': a.threads,
+           'library_sha256': sha256(a.library), 'model': a.model.name, 'model_sha256': sha256(a.model),
+           'references_sha256': sha256(a.references), 'limit': a.limit,
+           'settings': {name: os.environ[name] for name in SETTINGS},
+           'session': 'synchronous', 'chunk_ms': 20, 'sample_rate': rate,
+           'clips': len(output), 'words': num_words,
            'word_errors': errors, 'wer': errors/num_words, 'audio_seconds': seconds,
            'wall_seconds': sum(row['wall_seconds'] for row in output),
            'rtf': sum(row['wall_seconds'] for row in output)/seconds,

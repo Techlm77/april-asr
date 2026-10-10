@@ -71,6 +71,10 @@ def _init_library_functions(lib):
         lib.aas_wait.argtypes = [ctypes.c_void_p]
         lib.aas_wait.restype = ctypes.c_int
 
+    if hasattr(lib, "aas_get_backlog_ms"):
+        lib.aas_get_backlog_ms.argtypes = [ctypes.c_void_p]
+        lib.aas_get_backlog_ms.restype = ctypes.c_size_t
+
     lib.aas_realtime_get_speedup.argtypes = [ctypes.c_void_p]
     lib.aas_realtime_get_speedup.restype = ctypes.c_float
 
@@ -96,6 +100,7 @@ class AprilFFI:
         self.aas_create_session        = self.lib.aas_create_session
         self.aas_flush                 = self.lib.aas_flush
         self.aas_wait                  = getattr(self.lib, "aas_wait", None)
+        self.aas_get_backlog_ms        = getattr(self.lib, "aas_get_backlog_ms", None)
         self.aas_realtime_get_speedup  = self.lib.aas_realtime_get_speedup
         self.aas_free                  = self.lib.aas_free
 

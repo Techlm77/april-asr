@@ -34,5 +34,25 @@ int main(void) {
         mtx_destroy(&s.lock);
         cnd_destroy(&s.changed);
     }
+    /* pt_take_flags clears only the requested pending flags. */
+    struct State s = {0};
+    assert(mtx_init(&s.lock, mtx_plain) == thrd_success);
+    assert(cnd_init(&s.changed) == thrd_success);
+    ProcThread thread = pt_create(callback, &s);
+    assert(thread);
+    pt_raise(thread, PT_FLAG_AUDIO);
+    mtx_lock(&s.lock);
+    while (!s.calls) cnd_wait(&s.changed, &s.lock);
+    pt_raise(thread, PT_FLAG_AUDIO | PT_FLAG_OVERFLOW);
+    assert(pt_take_flags(thread, PT_FLAG_OVERFLOW) == PT_FLAG_OVERFLOW);
+    assert(pt_take_flags(thread, PT_FLAG_OVERFLOW) == 0);
+    s.released = true;
+    cnd_broadcast(&s.changed);
+    mtx_unlock(&s.lock);
+    assert(pt_wait_idle(thread));
+    assert(s.calls == 2 && s.flags == PT_FLAG_AUDIO);
+    pt_free(thread);
+    mtx_destroy(&s.lock);
+    cnd_destroy(&s.changed);
     return 0;
 }

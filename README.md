@@ -17,10 +17,47 @@
 - Encoder threads are configurable with `APRIL_ENCODER_THREADS`;
   `scripts/tune-cpu.py` helps choose a value.
 
-The public C API and model format are unchanged. On 80 LibriSpeech test-clean
-and test-other clips (1,601 words), word error rate went from 13.4% to 12.6% with
-the same English model. `tests/compare-asr.py` reproduces this comparison
-against labelled WAV files.
+### API changes
+
+The model format is unchanged, but the C API has additions and one changed
+contract:
+
+- `aas_flush` in an asynchronous session is now ordered with the audio queue.
+  Audio fed before the call belongs to the flushed utterance and audio fed
+  after it starts the next one, even while the background thread is behind,
+  so callers may keep feeding (for example from an audio capture callback)
+  without waiting.
+- New `aas_wait(session)` blocks until queued asynchronous work and callbacks,
+  including the final result of every queued flush, have finished. Call it
+  when you need the final result before continuing, such as before reading
+  results or tearing down. It returns 0 if called from the session's callback.
+- New `aas_get_backlog_ms(session)` reports how much fed audio an asynchronous
+  session has not processed yet. Use it to detect falling behind in
+  `APRIL_CONFIG_FLAG_ASYNC_NO_RT_BIT` mode, where `aas_realtime_get_speedup`
+  always returns 1.0.
+- `APRIL_RESULT_ERROR_CANT_KEEP_UP` is now reported while overloaded input
+  continues, not only once input stops.
+
+The Python (`Session.wait`, `Session.get_backlog_ms`), Java
+(`Session.waitIdle`, `Session.getBacklogMs`) and C# (`AprilSession.Wait`,
+`AprilSession.GetBacklogMs`) bindings expose the new functions.
+
+### Accuracy
+
+A preliminary comparison on 80 LibriSpeech test-clean and test-other clips
+(1,601 words) with an English model measured word error rate going from 13.4%
+to 12.6%. That run's clip manifest, model hash and settings have not been
+published yet, so treat the figure as unverified until they are.
+
+`tests/compare-asr.py` runs such a comparison against a JSON list of labelled
+WAV files. It now records the SHA-256 of the library, model, reference list and
+each clip, together with the profile, environment settings and chunking, so a
+result file is enough to repeat the run exactly:
+
+```
+$ python tests/compare-asr.py old/libaprilasr.so MODEL.april clips.json --profile baseline --output before.json
+$ python tests/compare-asr.py build/libaprilasr.so MODEL.april clips.json --profile balanced --output after.json
+```
 
 ## Status
 This library is currently facing some major rewrites over 2025 to improve efficiency and properly fulfill the API contract of multi-session support. The model format is going to change.

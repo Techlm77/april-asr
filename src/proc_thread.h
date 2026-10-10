@@ -32,6 +32,8 @@ typedef void(*ProcThreadCallback)(void*, int);
 
 ProcThread pt_create(ProcThreadCallback callback, void *userdata);
 void pt_raise(ProcThread thread, int flag);
+// Clears and returns the pending flags in mask, for use from the callback
+int pt_take_flags(ProcThread thread, int mask);
 bool pt_wait_idle(ProcThread thread);
 void pt_free(ProcThread thread);
 

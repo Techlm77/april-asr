@@ -83,6 +83,15 @@ void pt_raise(ProcThread thread, int flag) {
     mtx_unlock(&thread->mutex);
 }
 
+int pt_take_flags(ProcThread thread, int mask) {
+    if (!thread) return 0;
+    mtx_lock(&thread->mutex);
+    int flags = thread->flags & mask;
+    thread->flags &= ~mask;
+    mtx_unlock(&thread->mutex);
+    return flags;
+}
+
 bool pt_wait_idle(ProcThread thread) {
     if (!thread) return true;
     /* Waiting inside the result callback would deadlock the same worker. */

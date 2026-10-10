@@ -129,7 +129,8 @@ namespace AprilAsr
         /// positive float. A value below 1.0 means the session is keeping up, and
         /// a value greater than 1.0 means the input audio is being sped up by that
         /// factor in order to keep up. When the value is greater 1.0, the accuracy
-        /// is likely to be affected.
+        /// is likely to be affected. Sessions created with noRT never speed up
+        /// audio and always return 1.0; use GetBacklogMs instead.
         /// </summary>
         public float GetRTSpeedup()
         {
@@ -137,12 +138,42 @@ namespace AprilAsr
         }
 
         /// <summary>
+        /// Returns how many milliseconds of fed audio an asynchronous session
+        /// has not processed yet, or 0 for a synchronous session. A backlog that
+        /// keeps growing means the system cannot keep up; once the internal
+        /// buffer is full, audio is dropped and the callback receives
+        /// ErrorCantKeepUp.
+        /// </summary>
+        public ulong GetBacklogMs()
+        {
+            return AprilAsrPINVOKE.aas_get_backlog_ms(handle).ToUInt64();
+        }
+
+        /// <summary>
         /// Flush any remaining samples and force the session to produce a final
-        /// result.
+        /// result. In an asynchronous session the flush is queued in order with
+        /// the audio, so audio fed afterwards belongs to the next utterance and
+        /// feeding may continue immediately. Call Wait when the final result
+        /// must have been delivered before continuing.
         /// </summary>
         public void Flush()
         {
             AprilAsrPINVOKE.aas_flush(handle);
+        }
+
+        /// <summary>
+        /// Wait for queued asynchronous work and callbacks to finish, including
+        /// the final results of every queued flush. Returns immediately for
+        /// synchronous sessions.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">If called from this
+        /// session's callback, which would deadlock.</exception>
+        public void Wait()
+        {
+            if(AprilAsrPINVOKE.aas_wait(handle) == 0)
+            {
+                throw new InvalidOperationException("Cannot wait for a session from its own callback");
+            }
         }
     }
 }

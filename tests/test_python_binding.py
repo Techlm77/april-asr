@@ -33,7 +33,9 @@ for data in (b'\x00', b'\x00\x00\x00'):
 session.feed_pcm16(b'\x00\x00' * 100)
 session.flush()
 session.wait()
+assert session.get_backlog_ms() == 0
+assert april_asr.Session(model, lambda *_: None).get_backlog_ms() == 0
 del session, model
 gc.collect()
 assert not errors, errors
-print('PASS: Python invalid PCM/callback, partial initialization and async flush/wait')
+print('PASS: Python invalid PCM/callback, partial initialization, async flush/wait and backlog')

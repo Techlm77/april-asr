@@ -577,11 +577,21 @@ void aas_flush(AprilASRSession session) {
     if (!session) return;
     if(session->sync) return _aas_flush(session);
 
+    /* The mark keeps the boundary in order with the queued audio, so audio
+       fed before the worker reaches it still belongs to the next utterance. */
+    if (!ap_mark_flush(session->provider))
+        LOG_WARNING("Too many pending flushes; merging the newest utterances");
     pt_raise(session->thread, PT_FLAG_FLUSH);
 }
 
 int aas_wait(AprilASRSession session) {
     return session && (session->sync || pt_wait_idle(session->thread));
+}
+
+size_t aas_get_backlog_ms(AprilASRSession session) {
+    if (!session || session->sync) return 0;
+    size_t samples = ap_pending_samples(session->provider);
+    return (size_t)((uint64_t)samples * 1000 / session->model->params.sample_rate);
 }
 
 void _aas_flush(AprilASRSession session) {
@@ -624,22 +634,32 @@ void _aas_flush(AprilASRSession session) {
 }
 
 
+static void aas_report_overflow(AprilASRSession session) {
+    session->handler(session->userdata, APRIL_RESULT_ERROR_CANT_KEEP_UP, 0, NULL);
+}
+
 void run_aas_callback(void *userdata, int flags) {
     AprilASRSession session = userdata;
 
-    if(flags & (PT_FLAG_AUDIO | PT_FLAG_FLUSH)) {
-        for(;;){
-            size_t short_count = 3200;
-            short *shorts = ap_pull_audio(session->provider, &short_count);
-            if(short_count == 0) break;
+    if(flags & PT_FLAG_OVERFLOW) aas_report_overflow(session);
 
-            _aas_feed_pcm16(session, shorts, short_count);
+    /* Work in bounded batches. Under sustained overload the queue may never
+       drain, so overflow raised meanwhile is reported between batches rather
+       than once input stops. Flush marks split the queue into utterances. */
+    for(;;){
+        if(pt_take_flags(session->thread, PT_FLAG_OVERFLOW)) aas_report_overflow(session);
 
-            ap_pull_audio_finish(session->provider, short_count);
+        if(ap_take_flush(session->provider)) {
+            _aas_flush(session);
+            continue;
         }
+
+        size_t short_count = SEGSIZE;
+        short *shorts = ap_pull_audio(session->provider, &short_count);
+        if(short_count == 0) break;
+
+        _aas_feed_pcm16(session, shorts, short_count);
+
+        ap_pull_audio_finish(session->provider, short_count);
     }
-    /* Coalesced AUDIO + FLUSH must drain input before finalizing it. */
-    if(flags & PT_FLAG_FLUSH) _aas_flush(session);
-    if(flags & PT_FLAG_OVERFLOW)
-        session->handler(session->userdata, APRIL_RESULT_ERROR_CANT_KEEP_UP, 0, NULL);
 }

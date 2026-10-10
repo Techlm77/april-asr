@@ -1,4 +1,5 @@
-/* Wrapped writes, full-buffer backpressure and concurrent sample ordering. */
+/* Wrapped writes, full-buffer backpressure, concurrent sample ordering and
+   flush marks that keep later audio out of the flushed utterance. */
 #include <assert.h>
 #include <stdlib.h>
 #include "audio_provider.h"
@@ -42,6 +43,52 @@ int main(void) {
     thrd_join(consumer, NULL);
     count = 0;
     assert(!ap_pull_audio(p, &count) && count == 0);
+
+    /* Flush marks: pulls stop at the mark, repeated marks merge. */
+    short samples[300] = {0};
+    assert(!ap_take_flush(p));
+    assert(ap_push_audio(p, samples, 100));
+    assert(ap_mark_flush(p) && ap_mark_flush(p));
+    assert(ap_push_audio(p, samples, 200));
+    assert(ap_mark_flush(p));
+    assert(ap_pending_samples(p) == 300);
+    assert(!ap_take_flush(p));
+    count = 0;
+    assert(ap_pull_audio(p, &count) && count == 100);
+    ap_pull_audio_finish(p, 60);
+    assert(!ap_take_flush(p));
+    count = 0;
+    ap_pull_audio(p, &count);
+    assert(count == 40);
+    ap_pull_audio_finish(p, count);
+    assert(ap_take_flush(p) && !ap_take_flush(p));
+    count = 0;
+    ap_pull_audio(p, &count);
+    assert(count == 200);
+    ap_pull_audio_finish(p, count);
+    assert(ap_take_flush(p) && !ap_take_flush(p));
+    assert(ap_pending_samples(p) == 0);
+    /* A mark with no audio before it is taken immediately. */
+    assert(ap_mark_flush(p) && ap_take_flush(p));
+    /* Too many pending flushes move the newest instead of losing audio. */
+    for (int i = 0; i < 64; ++i) {
+        assert(ap_push_audio(p, samples, 1));
+        assert(ap_mark_flush(p));
+    }
+    assert(ap_push_audio(p, samples, 1));
+    assert(!ap_mark_flush(p));
+    for (int i = 0; i < 63; ++i) {
+        count = 0;
+        ap_pull_audio(p, &count);
+        assert(count == 1);
+        ap_pull_audio_finish(p, count);
+        assert(ap_take_flush(p));
+    }
+    count = 0;
+    ap_pull_audio(p, &count);
+    assert(count == 2);
+    ap_pull_audio_finish(p, count);
+    assert(ap_take_flush(p) && !ap_take_flush(p));
     ap_free(p);
     return 0;
 }
