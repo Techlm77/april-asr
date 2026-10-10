@@ -19,6 +19,22 @@
 #include "april_model.h"
 #include "log.h"
 #include "settings.h"
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
+static long online_cpu_count(void) {
+#ifdef _WIN32
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    return (long)info.dwNumberOfProcessors;
+#else
+    return sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+}
 
 #define MODEL_REQUIRE(expr) do { if (!(expr)) { \
     LOG_WARNING("Model validation failed: %s", #expr); goto fail; \
@@ -71,8 +87,11 @@ AprilASRModel aam_create_model(const char *model_path) {
     MODEL_ORT(g_ort->AddSessionConfigEntry(aam->session_options, "session.inter_op.allow_spinning", spinning));
 
     /* Only the larger encoder gets a configurable pool. The small decoder
-       and joiner stay single-threaded, avoiding three competing pools. */
-    int encoder_threads = april_env_int("APRIL_ENCODER_THREADS", 1, 1, 64);
+       and joiner stay single-threaded, avoiding three competing pools.
+       Two threads give most of the speedup on typical desktop CPUs; more
+       add little for 40 ms steps and take cores from the rest of the system. */
+    int default_threads = online_cpu_count() >= 2 ? 2 : 1;
+    int encoder_threads = april_env_int("APRIL_ENCODER_THREADS", default_threads, 1, 64);
     MODEL_ORT(g_ort->SetIntraOpNumThreads(aam->session_options, encoder_threads));
 
     MODEL_REQUIRE(load_network_from_model_file(aam->env, aam->session_options, file, 0, &aam->encoder));

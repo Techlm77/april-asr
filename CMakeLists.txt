@@ -62,6 +62,17 @@ if (NOT DEFINED ENV{ONNX_STATIC_ROOT})
   endif()
 
   set(april_link_libraries ONNXRuntime::ONNXRuntime)
+
+  # A downloaded SDK is not on the loader's search path. Record its directory
+  # in programs linking aprilasr_static (such as Live Captions) so they run
+  # without LD_LIBRARY_PATH. System copies need no runtime path.
+  get_filename_component(april_ort_dir "${ONNXRuntime_LIBRARY}" DIRECTORY)
+  file(REAL_PATH "${ONNXRuntime_ROOT_DIR}" april_ort_root)
+  file(REAL_PATH "${april_ort_dir}" april_ort_dir)
+  string(FIND "${april_ort_dir}/" "${april_ort_root}/" april_ort_in_root)
+  if(NOT WIN32 AND NOT APPLE AND april_ort_in_root EQUAL 0)
+    set(april_ort_rpath "${april_ort_dir}")
+  endif()
 else()
   set(april_link_libraries
     $ENV{ONNX_STATIC_ROOT}/libonnxruntime_session.a
@@ -173,6 +184,9 @@ set_source_files_properties(
 
 add_library(aprilasr_static STATIC ${april_sources})
 target_link_libraries(aprilasr_static ${april_link_libraries})
+if(april_ort_rpath)
+  target_link_options(aprilasr_static INTERFACE "-Wl,-rpath,${april_ort_rpath}")
+endif()
 
 add_library(aprilasr SHARED ${april_sources})
 target_link_libraries(aprilasr ${april_link_libraries})

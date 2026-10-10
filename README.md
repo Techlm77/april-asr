@@ -14,7 +14,8 @@
   (`APRIL_SILENCE_MS`), and the final flush does less padding work.
 - Model loading checks section bounds and ONNX tensor contracts, returning an
   error instead of aborting.
-- Encoder threads are configurable with `APRIL_ENCODER_THREADS`;
+- The encoder uses 2 threads by default (1 on single-core machines), which
+  gives most of the available speedup; override with `APRIL_ENCODER_THREADS`;
   `scripts/tune-cpu.py` helps choose a value.
 
 ### API changes
