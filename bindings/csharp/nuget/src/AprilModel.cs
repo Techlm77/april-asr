@@ -16,9 +16,15 @@ namespace AprilAsr
     /// After loading a model, you can create one or more sessions that use the
     /// model.
     /// </summary>
-    public class AprilModel
+    public class AprilModel : IDisposable
     {
         internal IntPtr handle;
+
+        // Sessions using this model. The native model must outlive them, but
+        // finalizers of unreachable objects run in no particular order.
+        private readonly object sync = new object();
+        private int sessions;
+        private bool released;
 
         /// <summary>
         /// Loads an april model given a path to a model file.
@@ -34,9 +40,57 @@ namespace AprilAsr
             }
         }
 
+        /// <summary>
+        /// Frees the model once every session using it has been disposed or
+        /// collected. Prefer disposing models explicitly.
+        /// </summary>
+        public void Dispose()
+        {
+            Release();
+            GC.SuppressFinalize(this);
+        }
+
         ~AprilModel()
         {
-            AprilAsrPINVOKE.aam_free(handle);
+            // The process is exiting; native threads may still be running
+            // callbacks, and the OS reclaims the memory.
+            if(!Environment.HasShutdownStarted) Release();
+        }
+
+        internal void AddSession()
+        {
+            lock(sync)
+            {
+                if(released) throw new ObjectDisposedException(nameof(AprilModel));
+                sessions++;
+            }
+        }
+
+        internal void RemoveSession()
+        {
+            lock(sync)
+            {
+                sessions--;
+                FreeIfUnused();
+            }
+        }
+
+        private void Release()
+        {
+            lock(sync)
+            {
+                released = true;
+                FreeIfUnused();
+            }
+        }
+
+        private void FreeIfUnused()
+        {
+            if(released && sessions == 0 && handle != IntPtr.Zero)
+            {
+                AprilAsrPINVOKE.aam_free(handle);
+                handle = IntPtr.Zero;
+            }
         }
 
         /// <value>The name of the model as stored in the file metadata</value>

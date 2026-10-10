@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using AprilAsr.PINVOKE;
 
 namespace AprilAsr
@@ -45,8 +47,27 @@ namespace AprilAsr
     /// 
     /// You need to pass a Model when constructing a Session.
     /// </summary>
-    public class AprilSession
+    public class AprilSession : IDisposable
     {
+        // Sessions not yet freed. An asynchronous session's worker thread is
+        // attached to the runtime once it delivers a result, and Mono waits for
+        // attached threads at exit, so free whatever is left when the process
+        // exits. Weak references keep this from holding sessions alive.
+        private static readonly List<WeakReference<AprilSession>> live = new List<WeakReference<AprilSession>>();
+
+        static AprilSession()
+        {
+            AppDomain.CurrentDomain.ProcessExit += (sender, args) =>
+            {
+                List<WeakReference<AprilSession>> remaining;
+                lock(live) remaining = new List<WeakReference<AprilSession>>(live);
+                foreach(var reference in remaining)
+                {
+                    if(reference.TryGetTarget(out var session)) session.Free();
+                }
+            };
+        }
+
         private IntPtr handle;
         private AprilModel model;
         private SessionCallback callback;
@@ -100,16 +121,44 @@ namespace AprilAsr
                 config.speaker.data[3] = (byte)(hash >> 0);
             }
 
+            model.AddSession();
             handle = AprilAsrPINVOKE.aas_create_session(model.handle, config);
             if(handle == IntPtr.Zero)
             {
+                model.RemoveSession();
                 throw new Exception("Failed to create session");
             }
+
+            lock(live)
+            {
+                live.RemoveAll(r => !r.TryGetTarget(out _));
+                live.Add(new WeakReference<AprilSession>(this));
+            }
+        }
+
+        /// <summary>
+        /// Finishes queued work and frees the session. Do not call this from
+        /// the session's callback.
+        /// </summary>
+        public void Dispose()
+        {
+            Free();
+            GC.SuppressFinalize(this);
         }
 
         ~AprilSession()
         {
-            AprilAsrPINVOKE.aas_free(handle);
+            // At process exit the background thread may be blocked calling
+            // into the shutting-down runtime, so waiting for it would hang.
+            if(!Environment.HasShutdownStarted) Free();
+        }
+
+        private void Free()
+        {
+            IntPtr session = Interlocked.Exchange(ref handle, IntPtr.Zero);
+            if(session == IntPtr.Zero) return;
+            AprilAsrPINVOKE.aas_free(session);
+            model.RemoveSession();
         }
 
         /// <summary>
